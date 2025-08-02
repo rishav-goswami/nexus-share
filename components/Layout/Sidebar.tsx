@@ -1,18 +1,27 @@
+
 import React from 'react';
 import { useAppContext } from '../../contexts/AppContext';
 import { Icon } from '../Icon';
+import { PUBLIC_SQUARE_ROOM_ID } from '../../constants';
 
 export const Sidebar: React.FC = () => {
   const { 
     user, 
     isConnected, 
-    rooms, 
+    joinedRooms, 
     currentRoom, 
-    peers, 
+    peers,
+    unreadRooms,
     handleRoomChange, 
     handleJoinOrCreateRoom, 
     handleLogout 
   } = useAppContext();
+
+  const sortedJoinedRooms = [...joinedRooms].sort((a, b) => {
+    if (a.id === PUBLIC_SQUARE_ROOM_ID) return -1;
+    if (b.id === PUBLIC_SQUARE_ROOM_ID) return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   return (
     <aside className="w-64 bg-gray-900 p-4 flex flex-col shrink-0">
@@ -35,9 +44,17 @@ export const Sidebar: React.FC = () => {
 
       <h3 className="text-xs font-bold uppercase text-gray-400 mt-4 mb-2">Rooms</h3>
       <div className="flex-grow overflow-y-auto mb-4">
-        {rooms.map(room => (
-          <button key={room.id} onClick={() => handleRoomChange(room)} className={`w-full text-left p-2 rounded-md mb-1 truncate ${currentRoom.id === room.id ? 'bg-cyan-600' : 'hover:bg-gray-700'}`}>
-            # {room.name}
+        {sortedJoinedRooms.map(room => (
+          <button 
+            key={room.id} 
+            onClick={() => handleRoomChange(room)} 
+            className={`w-full text-left p-2 rounded-md mb-1 flex items-center justify-between ${currentRoom.id === room.id ? 'bg-cyan-600 font-semibold' : 'hover:bg-gray-700'}`}
+            title={room.name}
+          >
+            <span className="truncate"># {room.name}</span>
+            {unreadRooms.has(room.id) && (
+              <span className="w-2.5 h-2.5 bg-cyan-400 rounded-full shrink-0 animate-pulse"></span>
+            )}
           </button>
         ))}
         <button onClick={handleJoinOrCreateRoom} className="w-full text-left p-2 rounded-md flex items-center gap-2 text-gray-400 hover:bg-gray-700 hover:text-white">
@@ -47,7 +64,7 @@ export const Sidebar: React.FC = () => {
 
       <h3 className="text-xs font-bold uppercase text-gray-400 mb-2 flex items-center gap-2">
         <Icon name="users" className="w-4 h-4" />
-        Peers in room ({peers.length})
+        All Connected Peers ({peers.length})
       </h3>
       <div className="overflow-y-auto">
         {peers.map(p => (

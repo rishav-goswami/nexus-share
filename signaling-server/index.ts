@@ -1,3 +1,4 @@
+
 // This is a placeholder for the Bun/Express/WebSocket signaling server.
 // It needs to be implemented separately.
 //
@@ -26,7 +27,7 @@ interface Room {
 }
 
 interface Connection {
-  ws: WebSocket;
+  ws: WebSocket & { user?: User, rooms?: Set<string> };
   user: User;
 }
 
@@ -49,8 +50,7 @@ const broadcastRoomList = () => {
 };
 
 
-wss.on('connection', ws => {
-  let currentRoomId: string | null = null;
+wss.on('connection', (ws: WebSocket & { user?: User, rooms?: Set<string> }) => {
   let currentUserId: string | null = null;
 
   // Send initial room list to the new client
@@ -65,33 +65,21 @@ wss.on('connection', ws => {
         case 'join-room': {
           const { room: newRoom, user } = payload;
           
-          // Leave previous room if any
-          if (currentRoomId && currentUserId) {
-            const oldRoomData = rooms.get(currentRoomId);
-            if (oldRoomData) {
-                oldRoomData.connections.delete(currentUserId);
-                if (oldRoomData.connections.size === 0) {
-                    rooms.delete(currentRoomId);
-                    broadcastRoomList();
-                } else {
-                    // Notify others in old room
-                    oldRoomData.connections.forEach(conn => conn.ws.send(JSON.stringify({ type: 'user-left', payload: { userId: currentUserId } })));
-                }
-            }
+          if (!currentUserId) {
+            currentUserId = user.id;
+            ws.user = user;
+            ws.rooms = new Set();
           }
-
-          currentRoomId = newRoom.id;
-          currentUserId = user.id;
+          ws.rooms?.add(newRoom.id);
 
           let isNewRoom = false;
-          if (!rooms.has(currentRoomId)) {
-            rooms.set(currentRoomId, { room: newRoom, connections: new Map() });
+          if (!rooms.has(newRoom.id)) {
+            rooms.set(newRoom.id, { room: newRoom, connections: new Map() });
             isNewRoom = true;
           }
           
-          const roomData = rooms.get(currentRoomId)!;
+          const roomData = rooms.get(newRoom.id)!;
           const roomConnections = roomData.connections;
-
 
           // Notify existing users about the new peer
           roomConnections.forEach(conn => conn.ws.send(JSON.stringify({ type: 'user-joined', payload: { user } })));
@@ -110,12 +98,17 @@ wss.on('connection', ws => {
 
         case 'relay-message': {
           const { targetId, message: relayMessage } = payload;
-          if (currentRoomId) {
-            const roomData = rooms.get(currentRoomId);
-            const targetConn = roomData?.connections.get(targetId);
-            if (targetConn) {
-              targetConn.ws.send(JSON.stringify({ type: 'relay-message', payload: { senderId: currentUserId, message: relayMessage } }));
-            }
+          // Find the target user across all rooms, as we don't know which room the relay is for.
+          let targetConn: Connection | undefined;
+          for (const room of rooms.values()) {
+              if(room.connections.has(targetId)) {
+                  targetConn = room.connections.get(targetId);
+                  break;
+              }
+          }
+
+          if (targetConn) {
+            targetConn.ws.send(JSON.stringify({ type: 'relay-message', payload: { senderId: currentUserId, message: relayMessage } }));
           }
           break;
         }
@@ -126,19 +119,21 @@ wss.on('connection', ws => {
   });
 
   ws.on('close', () => {
-    if (currentRoomId && currentUserId) {
-      const roomData = rooms.get(currentRoomId);
-      if(roomData) {
-        roomData.connections.delete(currentUserId);
-        if (roomData.connections.size === 0) {
-            rooms.delete(currentRoomId);
-            broadcastRoomList();
-        } else {
-            // Notify other users in the room
-            roomData.connections.forEach(conn => conn.ws.send(JSON.stringify({ type: 'user-left', payload: { userId: currentUserId } })));
-        }
-        console.log(`User ${currentUserId} left room ${currentRoomId}`);
+    if (ws.user && ws.rooms) {
+        const userId = ws.user.id;
+        console.log(`User ${ws.user.name} disconnected. Leaving all rooms.`);
+        ws.rooms.forEach(roomId => {
+            const roomData = rooms.get(roomId);
+            if (roomData) {
+                roomData.connections.delete(userId);
+                if (roomData.connections.size === 0) {
+                    rooms.delete(roomId);
+                    broadcastRoomList();
+                } else {
+                    roomData.connections.forEach(conn => conn.ws.send(JSON.stringify({ type: 'user-left', payload: { userId } })));
+                }
+            }
+        });
       }
-    }
   });
 });

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AppContext } from './contexts/AppContext';
 import type { User, Room, SharedItem, FileAnnouncement, FileTransferProgress } from './types';
@@ -13,12 +14,25 @@ interface MainApplicationProps {
 
 const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => {
   const [currentRoom, setCurrentRoom] = useState<Room>(PUBLIC_SQUARE_ROOM);
-  const [rooms, setRooms] = useState<Room[]>([PUBLIC_SQUARE_ROOM]);
+  const [joinedRooms, setJoinedRooms] = useState<Room[]>(() => {
+    const saved = localStorage.getItem('nexus-rooms');
+    try {
+        const initial = saved ? JSON.parse(saved) : [PUBLIC_SQUARE_ROOM];
+        if (!initial.some((r: Room) => r.id === PUBLIC_SQUARE_ROOM_ID)) {
+            initial.push(PUBLIC_SQUARE_ROOM);
+        }
+        return initial;
+    } catch {
+        return [PUBLIC_SQUARE_ROOM];
+    }
+  });
+  const [allRooms, setAllRooms] = useState<Room[]>(joinedRooms);
   const [peers, setPeers] = useState<User[]>([]);
   const [items, setItems] = useState<SharedItem[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [fileTransfers, setFileTransfers] = useState<Record<string, FileTransferProgress>>({});
   const [now, setNow] = useState(() => Date.now());
+  const [unreadRooms, setUnreadRooms] = useState<Set<string>>(new Set());
   
   const p2pServiceRef = useRef<P2PService | null>(null);
   const currentRoomRef = useRef(currentRoom);
@@ -27,15 +41,16 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
     currentRoomRef.current = currentRoom;
   }, [currentRoom]);
 
-  // TTL update timer
   useEffect(() => {
-    // This timer updates the "now" state, which forces re-rendering of TTL countdowns
+    localStorage.setItem('nexus-rooms', JSON.stringify(joinedRooms));
+  }, [joinedRooms]);
+
+  useEffect(() => {
     const timer = setInterval(() => {
       const currentTime = Date.now();
       setNow(currentTime);
-      // Also, check if any visible items have expired and remove them
       setItems(prevItems => prevItems.filter(item => currentTime < item.expiresAt));
-    }, 60 * 1000); // Update every minute
+    }, 60 * 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -43,8 +58,19 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
     const p2p = new P2PService(user, {
       onPeerListUpdate: setPeers,
       onItemReceived: (item) => {
-        if(item.roomId === p2pServiceRef.current?.currentRoomId) {
-          setItems(prev => [...prev, item]);
+        if (item.roomId !== currentRoomRef.current.id) {
+            setUnreadRooms(prev => new Set(prev).add(item.roomId));
+        }
+        if (item.roomId === currentRoomRef.current.id) {
+            setItems(prev => {
+                if (prev.some(i => i.id === item.id)) return prev;
+                return [...prev, item].sort((a,b) => a.createdAt - b.createdAt);
+            });
+        }
+      },
+      onItemDeleted: (itemId, roomId) => {
+        if (roomId === currentRoomRef.current.id) {
+            setItems(prev => prev.filter(i => i.id !== itemId));
         }
       },
       onFileProgress: (progress) => {
@@ -52,11 +78,11 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
       },
       onConnected: () => {
         setIsConnected(true);
-        p2p.joinRoom(currentRoomRef.current);
+        joinedRooms.forEach(room => p2pServiceRef.current?.joinRoom(room));
       },
       onDisconnected: () => setIsConnected(false),
       onRoomListUpdate: (receivedRooms: Room[]) => {
-        setRooms(prevRooms => {
+        setAllRooms(prevRooms => {
           const roomMap = new Map(prevRooms.map(r => [r.id, r]));
           receivedRooms.forEach(r => roomMap.set(r.id, r));
           
@@ -80,12 +106,11 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
       p2p.disconnect();
       p2pServiceRef.current = null;
     };
-  }, [user]);
+  }, [user, joinedRooms]);
 
-  // Load items for the current room
   useEffect(() => {
     storageService.getItems(currentRoom.id)
-        .then(setItems)
+        .then(storedItems => setItems(storedItems.sort((a,b) => a.createdAt - b.createdAt)))
         .catch(err => {
             console.error(`Failed to get items for room ${currentRoom.id}:`, err);
             setItems([]);
@@ -99,14 +124,14 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
 
   const handleSendMessage = async (messageContent: string, ttlMs: number) => {
     if (!messageContent.trim()) return;
-    const now = Date.now();
+    const nowTs = Date.now();
     const newItem: SharedItem = {
       id: crypto.randomUUID(),
       type: 'text',
       content: messageContent,
       sender: user,
-      createdAt: now,
-      expiresAt: now + ttlMs,
+      createdAt: nowTs,
+      expiresAt: nowTs + ttlMs,
       roomId: currentRoom.id,
     };
     try {
@@ -122,14 +147,14 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
   const handleFileSelect = async (file: File, ttlMs: number) => {
     const fileId = crypto.randomUUID();
     const fileInfo = { name: file.name, size: file.size, type: file.type };
-    const now = Date.now();
+    const nowTs = Date.now();
     const announcement: FileAnnouncement = {
       id: fileId,
       type: 'file',
       fileInfo,
       sender: user,
-      createdAt: now,
-      expiresAt: now + ttlMs,
+      createdAt: nowTs,
+      expiresAt: nowTs + ttlMs,
       roomId: currentRoom.id,
     };
 
@@ -145,10 +170,11 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
   };
 
   const handleDeleteItem = async (item: SharedItem) => {
-    if (!window.confirm("Are you sure you want to delete this? It will be removed from your local storage.")) return;
+    if (!window.confirm("Are you sure you want to delete this? It will be removed from your local storage and for other online peers.")) return;
     
     try {
         setItems(prev => prev.filter(i => i.id !== item.id));
+        p2pServiceRef.current?.broadcastDeleteItem(item);
         await storageService.deleteItem(item.id);
         if (item.type === 'file') {
             await storageService.deleteFile(item.id);
@@ -166,17 +192,23 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
   const handleRoomChange = (room: Room) => {
     if (currentRoom.id === room.id) return;
     setCurrentRoom(room);
-    p2pServiceRef.current?.joinRoom(room);
+    setUnreadRooms(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(room.id);
+        return newSet;
+    });
   };
 
   const handleJoinOrCreateRoom = () => {
     const name = prompt("Enter room name to join or create:");
     if (name && name.trim()) {
       const trimmedName = name.trim();
-      // Generate a deterministic ID from the room name
       const roomId = `user-room-${trimmedName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`;
       
       const roomToJoin: Room = { id: roomId, name: trimmedName };
+      if (!joinedRooms.some(r => r.id === roomToJoin.id)) {
+          setJoinedRooms(prev => [...prev, roomToJoin]);
+      }
       handleRoomChange(roomToJoin);
     }
   };
@@ -211,12 +243,14 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
     <AppContext.Provider value={{
       user,
       currentRoom,
-      rooms,
+      rooms: allRooms,
+      joinedRooms,
       peers,
       items: visibleItems,
       isConnected,
       fileTransfers,
       now,
+      unreadRooms,
       handleJoinOrCreateRoom,
       handleDeleteItem,
       handleFileDownload,

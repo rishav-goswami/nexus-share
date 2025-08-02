@@ -1,15 +1,18 @@
+
 import React, { createContext, useContext } from 'react';
 import type { User, Room, SharedItem, FileAnnouncement, FileTransferProgress } from '../types';
 
 interface AppContextType {
   user: User;
   currentRoom: Room;
-  rooms: Room[];
+  rooms: Room[]; // All discoverable rooms
+  joinedRooms: Room[]; // Rooms the user has joined
   peers: User[];
   items: SharedItem[];
   isConnected: boolean;
   fileTransfers: Record<string, FileTransferProgress>;
   now: number;
+  unreadRooms: Set<string>;
   handleJoinOrCreateRoom: () => void;
   handleDeleteItem: (item: SharedItem) => Promise<void>;
   handleFileDownload: (item: FileAnnouncement) => void;

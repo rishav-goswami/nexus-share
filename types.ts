@@ -45,6 +45,9 @@ export type DataChannelMessage =
   | { type: 'file-request'; fileId: string; }
   | { type: 'file-transfer-start'; fileId: string; fileInfo: FileInfo; }
   | { type: 'file-transfer-end'; fileId: string; }
+  | { type: 'item-deleted'; itemId: string; roomId: string; }
+  | { type: 'sync-request'; payload: { roomTimestamps: Record<string, number> }; }
+  | { type: 'sync-response'; payload: { item: SharedItem }; }
   | SharedItem;
 
 export interface FileTransferProgress {
