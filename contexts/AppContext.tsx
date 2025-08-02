@@ -13,6 +13,8 @@ interface AppContextType {
   fileTransfers: Record<string, FileTransferProgress>;
   now: number;
   unreadRooms: Set<string>;
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
   handleJoinOrCreateRoom: () => void;
   handleDeleteItem: (item: SharedItem) => Promise<void>;
   handleFileDownload: (item: FileAnnouncement) => void;

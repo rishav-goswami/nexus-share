@@ -4,21 +4,21 @@ import { storageService } from './services/storage.service';
 import { Spinner } from './components/Spinner';
 import { LoginScreen } from './components/Auth/LoginScreen';
 import MainApplication from './MainApplication';
+import { LandingPage } from './components/LandingPage';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const cleanupIntervalRef = useRef<number | null>(null);
 
-  // Cleanup old items and check for persisted user on mount
   useEffect(() => {
     const initialize = async () => {
       try {
         await storageService.cleanupOldItems();
-        // Also run cleanup periodically for long-running sessions
         cleanupIntervalRef.current = window.setInterval(() => {
           storageService.cleanupOldItems();
-        }, 60 * 60 * 1000); // Cleanup every hour
+        }, 60 * 60 * 1000);
 
         const savedUser = localStorage.getItem('nexus-user');
         if (savedUser) {
@@ -34,7 +34,6 @@ const App: React.FC = () => {
     };
     initialize();
 
-    // Cleanup on unmount
     return () => {
       if (cleanupIntervalRef.current) {
         clearInterval(cleanupIntervalRef.current);
@@ -46,6 +45,7 @@ const App: React.FC = () => {
     const newUser: User = { id: crypto.randomUUID(), name };
     localStorage.setItem('nexus-user', JSON.stringify(newUser));
     setUser(newUser);
+    setShowLoginModal(false);
   };
 
   const handleLogout = () => {
@@ -68,7 +68,14 @@ const App: React.FC = () => {
   }
 
   if (!user) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return (
+      <>
+        <LandingPage onLoginRequest={() => setShowLoginModal(true)} />
+        {showLoginModal && (
+          <LoginScreen onLogin={handleLogin} onClose={() => setShowLoginModal(false)} />
+        )}
+      </>
+    );
   }
 
   return <MainApplication user={user} onLogout={handleLogout} />;

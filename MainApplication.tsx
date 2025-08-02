@@ -33,6 +33,7 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
   const [fileTransfers, setFileTransfers] = useState<Record<string, FileTransferProgress>>({});
   const [now, setNow] = useState(() => Date.now());
   const [unreadRooms, setUnreadRooms] = useState<Set<string>>(new Set());
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const p2pServiceRef = useRef<P2PService | null>(null);
   const currentRoomRef = useRef(currentRoom);
@@ -197,6 +198,7 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
         newSet.delete(room.id);
         return newSet;
     });
+    setIsSidebarOpen(false); // Close sidebar on room change on mobile
   };
 
   const handleJoinOrCreateRoom = () => {
@@ -251,6 +253,8 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
       fileTransfers,
       now,
       unreadRooms,
+      isSidebarOpen,
+      setIsSidebarOpen,
       handleJoinOrCreateRoom,
       handleDeleteItem,
       handleFileDownload,

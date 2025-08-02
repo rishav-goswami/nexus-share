@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
+import { Icon } from '../Icon';
 
-export const LoginScreen: React.FC<{ onLogin: (name: string) => void }> = ({ onLogin }) => {
+interface LoginScreenProps {
+  onLogin: (name: string) => void;
+  onClose: () => void;
+}
+
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onClose }) => {
   const [name, setName] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -11,11 +17,21 @@ export const LoginScreen: React.FC<{ onLogin: (name: string) => void }> = ({ onL
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900">
-      <div className="w-full max-w-md p-8 space-y-8 bg-gray-800 rounded-lg shadow-lg">
+    <div 
+      className="fixed inset-0 bg-gray-900 bg-opacity-80 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div 
+        className="w-full max-w-md p-8 space-y-8 bg-gray-800 rounded-lg shadow-lg relative"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button onClick={onClose} className="absolute top-2 right-2 p-2 text-gray-400 hover:text-white rounded-full">
+            <Icon name="x-circle" className="w-6 h-6" />
+        </button>
+
         <div className="text-center">
-            <h1 className="text-4xl font-bold text-white">Nexus Share</h1>
-            <p className="mt-2 text-gray-400">Decentralized P2P Sharing for Code & Files</p>
+            <h1 className="text-3xl font-bold text-white">Join Nexus Share</h1>
+            <p className="mt-2 text-gray-400">Choose a display name to get started.</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="relative">

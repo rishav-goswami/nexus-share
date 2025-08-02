@@ -1,6 +1,6 @@
 {
   "name": "Nexus Share",
-  "description": "A decentralized peer-to-peer file sharing and messaging application built with React, TypeScript, and WebRTC.",
+  "description": "A decentralized, peer-to-peer platform for real-time messaging and secure file sharing. No servers, no logs, just pure connection.",
   "requestFramePermissions": [],
   "prompt": ""
 }

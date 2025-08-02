@@ -12,6 +12,7 @@ export const Sidebar: React.FC = () => {
     currentRoom, 
     peers,
     unreadRooms,
+    setIsSidebarOpen,
     handleRoomChange, 
     handleJoinOrCreateRoom, 
     handleLogout 
@@ -24,12 +25,15 @@ export const Sidebar: React.FC = () => {
   });
 
   return (
-    <aside className="w-64 bg-gray-900 p-4 flex flex-col shrink-0">
+    <aside className="w-64 bg-gray-900 p-4 flex flex-col shrink-0 h-full">
       <div className="flex items-center mb-4">
         <h2 className="text-xl font-bold text-white flex-grow">Nexus Share</h2>
-        <div title={isConnected ? 'Connected' : 'Disconnected'}>
+        <div title={isConnected ? 'Connected' : 'Disconnected'} className="mr-2">
           {isConnected ? <Icon name="wifi" className="w-5 h-5 text-green-400" /> : <Icon name="wifi-off" className="w-5 h-5 text-red-400" />}
         </div>
+        <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-1 text-gray-400 hover:text-white">
+          <Icon name="x-circle" className="w-6 h-6" />
+        </button>
       </div>
       <div className="mb-2">
         <div className="flex items-center gap-2 p-2 rounded-md bg-gray-700">

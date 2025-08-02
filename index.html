@@ -30,6 +30,18 @@
         }
       }
     </script>
+    <style>
+      @keyframes gradient-bg {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+      .animate-gradient {
+        background-size: 200% 200%;
+        background-image: linear-gradient(to right, #1e1e1e, #0891b2, #1e1e1e);
+        animation: gradient-bg 15s ease infinite;
+      }
+    </style>
   <script type="importmap">
 {
   "imports": {

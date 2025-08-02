@@ -5,10 +5,10 @@ import { MessageInput } from './MessageInput';
 
 export const ChatWindow: React.FC = () => {
   return (
-    <main className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col h-full">
       <ChatHeader />
       <MessageList />
       <MessageInput />
-    </main>
+    </div>
   );
 };
