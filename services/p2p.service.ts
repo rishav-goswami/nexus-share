@@ -1,6 +1,5 @@
-
 import { SIGNALING_SERVER_URL, ICE_SERVERS } from '../constants';
-import type { User, SharedItem, FileInfo, SignalingMessage, DataChannelMessage, FileTransferProgress, FileAnnouncement } from '../types';
+import type { User, SharedItem, FileInfo, SignalingMessage, DataChannelMessage, FileTransferProgress, FileAnnouncement, Room } from '../types';
 import { storageService } from './storage.service';
 
 interface P2PHandlers {
@@ -9,6 +8,7 @@ interface P2PHandlers {
   onFileProgress: (progress: FileTransferProgress) => void;
   onConnected: () => void;
   onDisconnected: () => void;
+  onRoomListUpdate: (rooms: Room[]) => void;
 }
 
 export class P2PService {
@@ -17,7 +17,7 @@ export class P2PService {
   private handlers: P2PHandlers;
   private peers: Map<string, { user: User; pc: RTCPeerConnection; dc?: RTCDataChannel }> = new Map();
   private incomingFileTransfers: Map<string, { chunks: BlobPart[], info: FileInfo, receivedSize: number }> = new Map();
-  private _currentRoomId: string | null = null;
+  private _currentRoom: Room | null = null;
   
   constructor(user: User, handlers: P2PHandlers) {
     this.user = user;
@@ -25,7 +25,11 @@ export class P2PService {
   }
 
   public get currentRoomId(): string | null {
-    return this._currentRoomId;
+    return this._currentRoom?.id ?? null;
+  }
+  
+  public get currentRoom(): Room | null {
+      return this._currentRoom;
   }
 
   connect() {
@@ -51,16 +55,16 @@ export class P2PService {
     this.ws?.close();
     this.peers.forEach(({ pc }) => pc.close());
     this.peers.clear();
-    this._currentRoomId = null;
+    this._currentRoom = null;
   }
 
-  joinRoom(roomId: string) {
-    this._currentRoomId = roomId;
+  joinRoom(room: Room) {
+    this._currentRoom = room;
     this.peers.forEach(({ pc }) => pc.close());
     this.peers.clear();
     this.sendToSignalingServer({
       type: 'join-room',
-      payload: { roomId, user: this.user },
+      payload: { room, user: this.user },
     });
   }
 
@@ -84,6 +88,9 @@ export class P2PService {
           break;
         case 'relay-message':
           this.handleRelayMessage(message.payload.senderId, message.payload.message);
+          break;
+        case 'room-list':
+          this.handlers.onRoomListUpdate(message.payload.rooms);
           break;
         default:
           console.warn('Unknown signaling message type:', message.type);

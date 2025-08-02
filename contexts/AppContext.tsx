@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext } from 'react';
 import type { User, Room, SharedItem, FileAnnouncement, FileTransferProgress } from '../types';
 
@@ -11,7 +10,7 @@ interface AppContextType {
   isConnected: boolean;
   fileTransfers: Record<string, FileTransferProgress>;
   now: number;
-  handleCreateRoom: () => void;
+  handleJoinOrCreateRoom: () => void;
   handleDeleteItem: (item: SharedItem) => Promise<void>;
   handleFileDownload: (item: FileAnnouncement) => void;
   handleFileSelect: (file: File, ttlMs: number) => void;

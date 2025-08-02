@@ -10,7 +10,7 @@ export const Sidebar: React.FC = () => {
     currentRoom, 
     peers, 
     handleRoomChange, 
-    handleCreateRoom, 
+    handleJoinOrCreateRoom, 
     handleLogout 
   } = useAppContext();
 
@@ -40,8 +40,8 @@ export const Sidebar: React.FC = () => {
             # {room.name}
           </button>
         ))}
-        <button onClick={handleCreateRoom} className="w-full text-left p-2 rounded-md flex items-center gap-2 text-gray-400 hover:bg-gray-700 hover:text-white">
-          <Icon name="plus" className="w-4 h-4" /> Create Room
+        <button onClick={handleJoinOrCreateRoom} className="w-full text-left p-2 rounded-md flex items-center gap-2 text-gray-400 hover:bg-gray-700 hover:text-white">
+          <Icon name="plus" className="w-4 h-4" /> Join or Create Room
         </button>
       </div>
 

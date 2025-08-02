@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AppContext } from './contexts/AppContext';
 import type { User, Room, SharedItem, FileAnnouncement, FileTransferProgress } from './types';
 import { P2PService } from './services/p2p.service';
 import { storageService } from './services/storage.service';
-import { PUBLIC_SQUARE_ROOM } from './constants';
+import { PUBLIC_SQUARE_ROOM, PUBLIC_SQUARE_ROOM_ID } from './constants';
 import { MainLayout } from './components/Layout/MainLayout';
 
 interface MainApplicationProps {
@@ -22,6 +21,11 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
   const [now, setNow] = useState(() => Date.now());
   
   const p2pServiceRef = useRef<P2PService | null>(null);
+  const currentRoomRef = useRef(currentRoom);
+
+  useEffect(() => {
+    currentRoomRef.current = currentRoom;
+  }, [currentRoom]);
 
   // TTL update timer
   useEffect(() => {
@@ -48,9 +52,26 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
       },
       onConnected: () => {
         setIsConnected(true);
-        p2p.joinRoom(currentRoom.id);
+        p2p.joinRoom(currentRoomRef.current);
       },
       onDisconnected: () => setIsConnected(false),
+      onRoomListUpdate: (receivedRooms: Room[]) => {
+        setRooms(prevRooms => {
+          const roomMap = new Map(prevRooms.map(r => [r.id, r]));
+          receivedRooms.forEach(r => roomMap.set(r.id, r));
+          
+          if (!roomMap.has(PUBLIC_SQUARE_ROOM.id)) {
+            roomMap.set(PUBLIC_SQUARE_ROOM.id, PUBLIC_SQUARE_ROOM);
+          }
+
+          const sortedRooms = Array.from(roomMap.values()).sort((a, b) => {
+              if (a.id === PUBLIC_SQUARE_ROOM.id) return -1;
+              if (b.id === PUBLIC_SQUARE_ROOM.id) return 1;
+              return a.name.localeCompare(b.name);
+          });
+          return sortedRooms;
+        });
+      },
     });
     p2pServiceRef.current = p2p;
     p2p.connect();
@@ -63,7 +84,12 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
 
   // Load items for the current room
   useEffect(() => {
-    storageService.getItems(currentRoom.id).then(setItems);
+    storageService.getItems(currentRoom.id)
+        .then(setItems)
+        .catch(err => {
+            console.error(`Failed to get items for room ${currentRoom.id}:`, err);
+            setItems([]);
+        });
   }, [currentRoom]);
 
   const handleLogout = () => {
@@ -71,7 +97,7 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
     onLogout();
   };
 
-  const handleSendMessage = (messageContent: string, ttlMs: number) => {
+  const handleSendMessage = async (messageContent: string, ttlMs: number) => {
     if (!messageContent.trim()) return;
     const now = Date.now();
     const newItem: SharedItem = {
@@ -83,13 +109,17 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
       expiresAt: now + ttlMs,
       roomId: currentRoom.id,
     };
-    storageService.addItem(newItem).then(() => {
+    try {
+        await storageService.addItem(newItem);
         setItems(prev => [...prev, newItem]);
         p2pServiceRef.current?.broadcastItem(newItem);
-    });
+    } catch (err) {
+        console.error("Failed to store and send message:", err);
+        alert("Failed to send message. See console for details.");
+    }
   };
 
-  const handleFileSelect = (file: File, ttlMs: number) => {
+  const handleFileSelect = async (file: File, ttlMs: number) => {
     const fileId = crypto.randomUUID();
     const fileInfo = { name: file.name, size: file.size, type: file.type };
     const now = Date.now();
@@ -103,12 +133,15 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
       roomId: currentRoom.id,
     };
 
-    storageService.storeFile(fileId, file).then(() => {
-      storageService.addItem(announcement).then(() => {
+    try {
+        await storageService.storeFile(fileId, file);
+        await storageService.addItem(announcement);
         setItems(prev => [...prev, announcement]);
         p2pServiceRef.current?.broadcastItem(announcement);
-      });
-    });
+    } catch(err) {
+        console.error("Failed to store and announce file:", err);
+        alert("Failed to send file. See console for details.");
+    }
   };
 
   const handleDeleteItem = async (item: SharedItem) => {
@@ -131,16 +164,20 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
   };
 
   const handleRoomChange = (room: Room) => {
+    if (currentRoom.id === room.id) return;
     setCurrentRoom(room);
-    p2pServiceRef.current?.joinRoom(room.id);
+    p2pServiceRef.current?.joinRoom(room);
   };
 
-  const handleCreateRoom = () => {
-    const name = prompt("Enter new room name:");
-    if (name) {
-      const newRoom: Room = { id: crypto.randomUUID(), name };
-      setRooms(prev => [...prev, newRoom]);
-      handleRoomChange(newRoom);
+  const handleJoinOrCreateRoom = () => {
+    const name = prompt("Enter room name to join or create:");
+    if (name && name.trim()) {
+      const trimmedName = name.trim();
+      // Generate a deterministic ID from the room name
+      const roomId = `user-room-${trimmedName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`;
+      
+      const roomToJoin: Room = { id: roomId, name: trimmedName };
+      handleRoomChange(roomToJoin);
     }
   };
 
@@ -149,17 +186,22 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
   }, []);
   
   const handleSaveFile = useCallback(async (fileId: string) => {
-    const blob = await storageService.getFile(fileId);
-    const transfer = fileTransfers[fileId];
-    if (blob && transfer) {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = transfer.fileName;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      a.remove();
+    try {
+        const blob = await storageService.getFile(fileId);
+        const transfer = fileTransfers[fileId];
+        if (blob && transfer) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = transfer.fileName;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          a.remove();
+        }
+    } catch(err) {
+        console.error("Failed to save file:", err);
+        alert("Failed to save file. See console for details.");
     }
   }, [fileTransfers]);
 
@@ -175,7 +217,7 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
       isConnected,
       fileTransfers,
       now,
-      handleCreateRoom,
+      handleJoinOrCreateRoom,
       handleDeleteItem,
       handleFileDownload,
       handleFileSelect,
