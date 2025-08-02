@@ -1,5 +1,6 @@
 {
   "name": "Nexus Share",
   "description": "A decentralized peer-to-peer file sharing and messaging application built with React, TypeScript, and WebRTC.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "prompt": ""
 }

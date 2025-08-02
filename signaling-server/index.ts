@@ -31,6 +31,8 @@ const rooms = new Map<string, Map<string, Connection>>(); // roomId -> userId ->
 
 console.log('Signaling server started on ws://localhost:8080');
 
+wss.on('error', console.error);
+
 wss.on('connection', ws => {
   let currentRoomId: string | null = null;
   let currentUserId: string | null = null;

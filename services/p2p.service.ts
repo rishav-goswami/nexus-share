@@ -17,11 +17,15 @@ export class P2PService {
   private handlers: P2PHandlers;
   private peers: Map<string, { user: User; pc: RTCPeerConnection; dc?: RTCDataChannel }> = new Map();
   private incomingFileTransfers: Map<string, { chunks: BlobPart[], info: FileInfo, receivedSize: number }> = new Map();
-  private currentRoomId: string | null = null;
+  private _currentRoomId: string | null = null;
   
   constructor(user: User, handlers: P2PHandlers) {
     this.user = user;
     this.handlers = handlers;
+  }
+
+  public get currentRoomId(): string | null {
+    return this._currentRoomId;
   }
 
   connect() {
@@ -38,7 +42,7 @@ export class P2PService {
       this.handlers.onPeerListUpdate([]);
     };
     this.ws.onerror = (error) => {
-      console.error('Signaling server error:', error);
+      console.error(`Signaling server connection error at ${this.ws?.url}. Please ensure the server is running and accessible.`, error);
       this.handlers.onDisconnected();
     };
   }
@@ -47,11 +51,11 @@ export class P2PService {
     this.ws?.close();
     this.peers.forEach(({ pc }) => pc.close());
     this.peers.clear();
-    this.currentRoomId = null;
+    this._currentRoomId = null;
   }
 
   joinRoom(roomId: string) {
-    this.currentRoomId = roomId;
+    this._currentRoomId = roomId;
     this.peers.forEach(({ pc }) => pc.close());
     this.peers.clear();
     this.sendToSignalingServer({
@@ -194,26 +198,35 @@ export class P2PService {
     
     dc.onmessage = async (event) => {
       if (typeof event.data === 'string') {
-        const message: DataChannelMessage = JSON.parse(event.data);
-        if ('type' in message) {
-            switch(message.type) {
-                case 'text':
-                case 'file':
-                    storageService.addItem(message).then(() => this.handlers.onItemReceived(message));
-                    break;
-                case 'file-request':
-                    this.handleFileRequest(message.fileId, peerId);
-                    break;
-                case 'file-transfer-start':
-                    this.handleFileTransferStart(message);
-                    break;
-                case 'file-transfer-end':
-                    this.handleFileTransferEnd(message.fileId);
-                    break;
+        try {
+            const message: DataChannelMessage = JSON.parse(event.data);
+            if ('type' in message) {
+                switch(message.type) {
+                    case 'text':
+                    case 'file':
+                        storageService.addItem(message).then(() => this.handlers.onItemReceived(message));
+                        break;
+                    case 'file-request':
+                        this.handleFileRequest(message.fileId, peerId);
+                        break;
+                    case 'file-transfer-start':
+                        this.handleFileTransferStart(message);
+                        break;
+                    case 'file-transfer-end':
+                        this.handleFileTransferEnd(message.fileId);
+                        break;
+                }
             }
+        } catch (error) {
+            console.error("Failed to parse data channel message:", error);
         }
-      } else { // ArrayBuffer for file chunks
-          this.handleFileChunk(event.data);
+      } else { // It's binary, should be a Blob containing fileId + chunk
+        if (event.data instanceof Blob) {
+            await this.handleFileChunk(event.data);
+        } else if (event.data instanceof ArrayBuffer) {
+            // Fallback for browsers that might send ArrayBuffer. Convert to Blob.
+            await this.handleFileChunk(new Blob([event.data]));
+        }
       }
     };
   }
@@ -253,15 +266,25 @@ export class P2PService {
     const hasFile = await storageService.hasFile(fileId);
     if (!hasFile) return;
 
-    console.log(`Peer ${this.user.name} has the file ${fileId}, starting transfer to ${requesterId}`);
     const fileBlob = await storageService.getFile(fileId);
-    const fileAnnouncement = await storageService.getItems(this.currentRoomId || '').then(items => items.find(i => i.id === fileId) as FileAnnouncement);
+    const item = await storageService.getItem(fileId);
 
-    if (!fileBlob || !fileAnnouncement) return;
-    
+    // If we don't have the file blob or the announcement item in storage, we can't proceed.
+    // Also, ensure the item is actually a file announcement. This prevents a crash.
+    if (!fileBlob || !item || item.type !== 'file') {
+      console.warn(`File blob or announcement not found for fileId: ${fileId}. Aborting transfer.`);
+      return;
+    }
+    const fileAnnouncement = item as FileAnnouncement;
+
     const peer = this.peers.get(requesterId);
-    if (!peer || peer.dc?.readyState !== 'open') return;
+    if (!peer || !peer.dc || peer.dc.readyState !== 'open') {
+      console.warn(`No open data channel to peer ${requesterId}. Aborting transfer.`);
+      return;
+    }
 
+    console.log(`Peer ${this.user.name} has the file ${fileId}, starting transfer to ${requesterId}`);
+    
     const dc = peer.dc;
     const startMessage: DataChannelMessage = { type: 'file-transfer-start', fileId, fileInfo: fileAnnouncement.fileInfo };
     dc.send(JSON.stringify(startMessage));
@@ -275,7 +298,9 @@ export class P2PService {
         while(dc.bufferedAmount > dc.bufferedAmountLowThreshold) {
             await new Promise(resolve => setTimeout(resolve, 10));
         }
-        dc.send(await chunk.arrayBuffer());
+        // Prepend the fileId to the chunk to identify it on the other side
+        const combinedBlob = new Blob([fileId, chunk]);
+        dc.send(combinedBlob);
     }
 
     const endMessage: DataChannelMessage = { type: 'file-transfer-end', fileId };
@@ -300,22 +325,35 @@ export class P2PService {
       });
   }
   
-  private handleFileChunk(arrayBuffer: ArrayBuffer) {
-      // This simple logic assumes only one file is transferred at a time.
-      // A more robust implementation would need to tag chunks with file IDs.
-      const transfer = this.incomingFileTransfers.values().next().value;
-      if (transfer) {
-        const [fileId, currentTransfer] = Array.from(this.incomingFileTransfers.entries())[0];
-        currentTransfer.chunks.push(new Blob([arrayBuffer]));
-        currentTransfer.receivedSize += arrayBuffer.byteLength;
-        this.handlers.onFileProgress({
-            fileId: fileId,
-            fileName: currentTransfer.info.name,
-            status: 'progress',
-            receivedSize: currentTransfer.receivedSize,
-            totalSize: currentTransfer.info.size,
-        });
+  private async handleFileChunk(dataBlob: Blob) {
+      // A UUID is 36 characters long.
+      const fileIdLength = 36;
+      if (dataBlob.size <= fileIdLength) {
+          console.error("Received a file chunk that's too small to contain a fileId.");
+          return;
       }
+  
+      const idBlob = dataBlob.slice(0, fileIdLength);
+      const chunkBlob = dataBlob.slice(fileIdLength);
+  
+      const fileId = await idBlob.text();
+      
+      const transfer = this.incomingFileTransfers.get(fileId);
+      if (!transfer) {
+          console.warn(`Received chunk for an unknown or completed file transfer: ${fileId}`);
+          return;
+      }
+      
+      transfer.chunks.push(chunkBlob);
+      transfer.receivedSize += chunkBlob.size;
+  
+      this.handlers.onFileProgress({
+          fileId: fileId,
+          fileName: transfer.info.name,
+          status: 'progress',
+          receivedSize: transfer.receivedSize,
+          totalSize: transfer.info.size,
+      });
   }
   
   private handleFileTransferEnd(fileId: string) {

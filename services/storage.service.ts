@@ -27,10 +27,15 @@ export const storageService = {
     await db.put(ITEMS_STORE_NAME, item);
   },
 
+  async getItem(itemId: string): Promise<SharedItem | undefined> {
+    const db = await initDB();
+    return db.get(ITEMS_STORE_NAME, itemId);
+  },
+
   async getItems(roomId: string): Promise<SharedItem[]> {
     const db = await initDB();
     const items = await db.getAllFromIndex(ITEMS_STORE_NAME, 'roomId', roomId);
-    return items.sort((a, b) => a.timestamp - b.timestamp);
+    return items.sort((a, b) => a.createdAt - b.createdAt);
   },
 
   async storeFile(fileId: string, blob: Blob): Promise<void> {
@@ -57,5 +62,34 @@ export const storageService = {
   async deleteFile(fileId: string): Promise<void> {
     const db = await initDB();
     await db.delete(FILES_STORE_NAME, fileId);
+  },
+
+  async cleanupOldItems(): Promise<void> {
+    const db = await initDB();
+    const tx = db.transaction([ITEMS_STORE_NAME, FILES_STORE_NAME], 'readwrite');
+    const itemsStore = tx.objectStore(ITEMS_STORE_NAME);
+    const filesStore = tx.objectStore(FILES_STORE_NAME);
+    
+    let cursor = await itemsStore.openCursor();
+    const now = Date.now();
+    const deletedFiles = new Set<string>();
+
+    while (cursor) {
+      const item = cursor.value;
+      if (now > item.expiresAt) {
+        cursor.delete();
+        if (item.type === 'file') {
+            deletedFiles.add(item.id);
+        }
+      }
+      cursor = await cursor.continue();
+    }
+    
+    for (const fileId of deletedFiles) {
+        await filesStore.delete(fileId);
+    }
+
+    await tx.done;
+    console.log(`Cleanup complete. Removed ${deletedFiles.size} expired files and associated items.`);
   },
 };

@@ -7,7 +7,8 @@ export interface User {
 export interface BaseItem {
   id: string;
   sender: User;
-  timestamp: number;
+  createdAt: number; // Changed from timestamp
+  expiresAt: number; // Added for TTL
   roomId: string;
 }
 
