@@ -51,7 +51,11 @@ export const storageService = {
 
   async deleteItem(itemId: string): Promise<void> {
     const db = await initDB();
-    // This is a local deletion. We might still have the file if it's a file announcement.
     await db.delete(ITEMS_STORE_NAME, itemId);
+  },
+
+  async deleteFile(fileId: string): Promise<void> {
+    const db = await initDB();
+    await db.delete(FILES_STORE_NAME, fileId);
   },
 };
