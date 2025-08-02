@@ -13,6 +13,7 @@ export const Sidebar: React.FC = () => {
     peers,
     unreadRooms,
     setIsSidebarOpen,
+    setIsSettingsOpen,
     handleRoomChange, 
     handleJoinOrCreateRoom, 
     handleLogout 
@@ -40,10 +41,15 @@ export const Sidebar: React.FC = () => {
           <div className="w-8 h-8 rounded-full bg-cyan-500 flex items-center justify-center font-bold text-gray-900 shrink-0">{user.name.charAt(0).toUpperCase()}</div>
           <span className="font-semibold truncate">{user.name}</span>
         </div>
-        <button onClick={handleLogout} className="w-full mt-2 p-2 flex items-center justify-center gap-2 rounded-md bg-gray-700 hover:bg-red-800 transition-colors text-white font-semibold">
-          <Icon name="logout" className="w-5 h-5" />
-          <span>Logout</span>
-        </button>
+        <div className="flex items-center gap-2 mt-2">
+          <button onClick={() => setIsSettingsOpen(true)} className="flex-1 p-2 flex items-center justify-center gap-2 rounded-md bg-gray-700 hover:bg-gray-600 transition-colors text-white font-semibold" title="Settings">
+            <Icon name="cog" className="w-5 h-5" />
+            <span>Settings</span>
+          </button>
+          <button onClick={handleLogout} className="p-2 flex items-center justify-center gap-2 rounded-md bg-gray-700 hover:bg-red-800 transition-colors text-white font-semibold" title="Logout">
+            <Icon name="logout" className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       <h3 className="text-xs font-bold uppercase text-gray-400 mt-4 mb-2">Rooms</h3>

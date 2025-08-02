@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import type { User } from './types';
 import { storageService } from './services/storage.service';
@@ -49,15 +50,20 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-     if (window.confirm("Are you sure you want to log out?")) {
-        localStorage.removeItem('nexus-user');
-        if (cleanupIntervalRef.current) {
-            clearInterval(cleanupIntervalRef.current);
-            cleanupIntervalRef.current = null;
-        }
-        setUser(null);
-     }
+     // Confirmation can be handled by the caller if needed
+    localStorage.removeItem('nexus-user');
+    if (cleanupIntervalRef.current) {
+        clearInterval(cleanupIntervalRef.current);
+        cleanupIntervalRef.current = null;
+    }
+    setUser(null);
   };
+
+  const handleUserUpdate = (updatedUser: User) => {
+    localStorage.setItem('nexus-user', JSON.stringify(updatedUser));
+    setUser(updatedUser);
+  };
+
 
   if (!isInitialized) {
     return (
@@ -78,7 +84,7 @@ const App: React.FC = () => {
     );
   }
 
-  return <MainApplication user={user} onLogout={handleLogout} />;
+  return <MainApplication user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />;
 };
 
 export default App;

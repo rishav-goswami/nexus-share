@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext } from 'react';
-import type { User, Room, SharedItem, FileAnnouncement, FileTransferProgress } from '../types';
+import type { User, Room, SharedItem, FileAnnouncement, FileTransferProgress, AppSettings } from '../types';
 
 interface AppContextType {
   user: User;
@@ -15,6 +15,9 @@ interface AppContextType {
   unreadRooms: Set<string>;
   isSidebarOpen: boolean;
   setIsSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  settings: AppSettings | null;
+  isSettingsOpen: boolean;
+  setIsSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   handleJoinOrCreateRoom: () => void;
   handleDeleteItem: (item: SharedItem) => Promise<void>;
   handleFileDownload: (item: FileAnnouncement) => void;
@@ -23,6 +26,9 @@ interface AppContextType {
   handleRoomChange: (room: Room) => void;
   handleSaveFile: (fileId: string) => Promise<void>;
   handleSendMessage: (message: string, ttlMs: number) => void;
+  handleUpdateSettings: (newSettings: AppSettings) => void;
+  handleUpdateProfile: (name: string) => void;
+  handleClearAllData: () => void;
 }
 
 export const AppContext = createContext<AppContextType | null>(null);

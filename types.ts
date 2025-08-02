@@ -58,3 +58,8 @@ export interface FileTransferProgress {
     status: 'starting' | 'progress' | 'completed' | 'failed';
     error?: string;
 }
+
+export interface AppSettings {
+  disablePublicSquareSync: boolean;
+  syncDurationMs: number;
+}

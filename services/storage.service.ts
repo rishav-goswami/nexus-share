@@ -92,4 +92,13 @@ export const storageService = {
     await tx.done;
     console.log(`Cleanup complete. Removed ${deletedFiles.size} expired files and associated items.`);
   },
+
+  async clearAllData(): Promise<void> {
+    const db = await initDB();
+    const tx = db.transaction([ITEMS_STORE_NAME, FILES_STORE_NAME], 'readwrite');
+    await tx.objectStore(ITEMS_STORE_NAME).clear();
+    await tx.objectStore(FILES_STORE_NAME).clear();
+    await tx.done;
+    console.log('Cleared all local data from IndexedDB.');
+  }
 };

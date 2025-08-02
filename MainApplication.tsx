@@ -1,18 +1,22 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AppContext } from './contexts/AppContext';
-import type { User, Room, SharedItem, FileAnnouncement, FileTransferProgress } from './types';
+import type { User, Room, SharedItem, FileAnnouncement, FileTransferProgress, AppSettings } from './types';
 import { P2PService } from './services/p2p.service';
 import { storageService } from './services/storage.service';
+import { settingsService } from './services/settings.service';
 import { PUBLIC_SQUARE_ROOM, PUBLIC_SQUARE_ROOM_ID } from './constants';
 import { MainLayout } from './components/Layout/MainLayout';
+import { SettingsModal } from './components/Settings/SettingsModal';
 
 interface MainApplicationProps {
   user: User;
   onLogout: () => void;
+  onUserUpdate: (user: User) => void;
 }
 
-const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => {
+const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout, onUserUpdate }) => {
+  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [currentRoom, setCurrentRoom] = useState<Room>(PUBLIC_SQUARE_ROOM);
   const [joinedRooms, setJoinedRooms] = useState<Room[]>(() => {
     const saved = localStorage.getItem('nexus-rooms');
@@ -34,6 +38,7 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
   const [now, setNow] = useState(() => Date.now());
   const [unreadRooms, setUnreadRooms] = useState<Set<string>>(new Set());
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
   const p2pServiceRef = useRef<P2PService | null>(null);
   const currentRoomRef = useRef(currentRoom);
@@ -47,6 +52,11 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
   }, [joinedRooms]);
 
   useEffect(() => {
+    const loadedSettings = settingsService.loadSettings();
+    setSettings(loadedSettings);
+  }, []);
+
+  useEffect(() => {
     const timer = setInterval(() => {
       const currentTime = Date.now();
       setNow(currentTime);
@@ -56,7 +66,9 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
   }, []);
 
   useEffect(() => {
-    const p2p = new P2PService(user, {
+    if (!settings) return;
+
+    const p2p = new P2PService(user, settings, {
       onPeerListUpdate: setPeers,
       onItemReceived: (item) => {
         if (item.roomId !== currentRoomRef.current.id) {
@@ -107,7 +119,7 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
       p2p.disconnect();
       p2pServiceRef.current = null;
     };
-  }, [user, joinedRooms]);
+  }, [user, joinedRooms, settings]);
 
   useEffect(() => {
     storageService.getItems(currentRoom.id)
@@ -117,10 +129,39 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
             setItems([]);
         });
   }, [currentRoom]);
+  
+  const handleUpdateSettings = useCallback((newSettings: AppSettings) => {
+    settingsService.saveSettings(newSettings);
+    setSettings(newSettings);
+    p2pServiceRef.current?.updateSettings(newSettings);
+  }, []);
+
+  const handleUpdateProfile = useCallback((name: string) => {
+      const updatedUser = { ...user, name };
+      onUserUpdate(updatedUser);
+  }, [user, onUserUpdate]);
+  
+  const handleClearAllData = useCallback(async () => {
+      if(window.confirm("Are you sure you want to clear all data? This will delete all messages, files, and settings from this device and log you out. This action cannot be undone.")) {
+        p2pServiceRef.current?.disconnect();
+        try {
+            await storageService.clearAllData();
+            localStorage.removeItem('nexus-rooms');
+            localStorage.removeItem('nexus-settings');
+            onLogout();
+        } catch(err) {
+            console.error("Failed to clear all data:", err);
+            alert("Could not clear all data. See console for details.");
+        }
+      }
+  }, [onLogout]);
+
 
   const handleLogout = () => {
-    p2pServiceRef.current?.disconnect();
-    onLogout();
+    if (window.confirm("Are you sure you want to log out?")) {
+        p2pServiceRef.current?.disconnect();
+        onLogout();
+    }
   };
 
   const handleSendMessage = async (messageContent: string, ttlMs: number) => {
@@ -255,6 +296,9 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
       unreadRooms,
       isSidebarOpen,
       setIsSidebarOpen,
+      settings,
+      isSettingsOpen,
+      setIsSettingsOpen,
       handleJoinOrCreateRoom,
       handleDeleteItem,
       handleFileDownload,
@@ -263,8 +307,12 @@ const MainApplication: React.FC<MainApplicationProps> = ({ user, onLogout }) => 
       handleRoomChange,
       handleSaveFile,
       handleSendMessage,
+      handleUpdateSettings,
+      handleUpdateProfile,
+      handleClearAllData
     }}>
       <MainLayout />
+      {isSettingsOpen && <SettingsModal />}
     </AppContext.Provider>
   );
 };

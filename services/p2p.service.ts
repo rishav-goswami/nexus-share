@@ -1,6 +1,6 @@
 
-import { SIGNALING_SERVER_URL, ICE_SERVERS } from '../constants';
-import type { User, SharedItem, FileInfo, SignalingMessage, DataChannelMessage, FileTransferProgress, FileAnnouncement, Room } from '../types';
+import { SIGNALING_SERVER_URL, ICE_SERVERS, PUBLIC_SQUARE_ROOM_ID } from '../constants';
+import type { User, SharedItem, FileInfo, SignalingMessage, DataChannelMessage, FileTransferProgress, FileAnnouncement, Room, AppSettings } from '../types';
 import { storageService } from './storage.service';
 
 interface P2PHandlers {
@@ -17,17 +17,24 @@ export class P2PService {
   private ws: WebSocket | null = null;
   private user: User;
   private handlers: P2PHandlers;
+  private settings: AppSettings;
   private peers: Map<string, { user: User; pc: RTCPeerConnection; dc?: RTCDataChannel }> = new Map();
   private incomingFileTransfers: Map<string, { chunks: BlobPart[], info: FileInfo, receivedSize: number }> = new Map();
   private _subscribedRooms: Map<string, Room> = new Map();
   
-  constructor(user: User, handlers: P2PHandlers) {
+  constructor(user: User, settings: AppSettings, handlers: P2PHandlers) {
     this.user = user;
+    this.settings = settings;
     this.handlers = handlers;
   }
 
   public get subscribedRooms(): Room[] {
     return Array.from(this._subscribedRooms.values());
+  }
+  
+  public updateSettings(newSettings: AppSettings) {
+    this.settings = newSettings;
+    console.log('P2P Service settings updated:', newSettings);
   }
 
   connect() {
@@ -214,6 +221,8 @@ export class P2PService {
                 switch(message.type) {
                     case 'text':
                     case 'file':
+                        // Do not sync public square if disabled
+                        if (message.roomId === PUBLIC_SQUARE_ROOM_ID && this.settings.disablePublicSquareSync) return;
                         storageService.addItem(message).then(() => this.handlers.onItemReceived(message));
                         break;
                     case 'file-request':
@@ -230,6 +239,7 @@ export class P2PService {
                         break;
                     case 'sync-response':
                         // Don't re-broadcast sync'd items
+                        if (message.payload.item.roomId === PUBLIC_SQUARE_ROOM_ID && this.settings.disablePublicSquareSync) return;
                         storageService.addItem(message.payload.item).then(() => this.handlers.onItemReceived(message.payload.item));
                         break;
                     case 'item-deleted':
@@ -253,6 +263,9 @@ export class P2PService {
   private async sendSyncRequest(dc: RTCDataChannel) {
     const roomTimestamps: Record<string, number> = {};
     for (const roomId of this._subscribedRooms.keys()) {
+        if (roomId === PUBLIC_SQUARE_ROOM_ID && this.settings.disablePublicSquareSync) {
+            continue; // Don't request sync for public square if disabled
+        }
         const items = await storageService.getItems(roomId);
         const lastTimestamp = items.reduce((latest, item) => Math.max(latest, item.createdAt), 0);
         roomTimestamps[roomId] = lastTimestamp;
@@ -265,11 +278,24 @@ export class P2PService {
   private async handleSyncRequest(roomTimestamps: Record<string, number>, dc: RTCDataChannel) {
     if (dc.readyState !== 'open') return;
 
-    console.log("Received sync request:", roomTimestamps);
+    console.log("Received sync request, processing with my settings:", this.settings);
 
     for (const [roomId, peerTimestamp] of Object.entries(roomTimestamps)) {
         if (this._subscribedRooms.has(roomId)) {
-            const myItems = await storageService.getItems(roomId);
+            // A peer requested sync for Public Square, but I have it disabled. I should not send them anything.
+            if (roomId === PUBLIC_SQUARE_ROOM_ID && this.settings.disablePublicSquareSync) {
+                console.log(`Skipping sync for ${roomId} due to local settings.`);
+                continue;
+            }
+
+            let myItems = await storageService.getItems(roomId);
+
+            // Filter my items based on my sync duration setting
+            if (this.settings.syncDurationMs !== Infinity) {
+              const cutoff = Date.now() - this.settings.syncDurationMs;
+              myItems = myItems.filter(item => item.createdAt >= cutoff);
+            }
+            
             const itemsToSync = myItems.filter(item => item.createdAt > peerTimestamp);
             
             for (const item of itemsToSync) {

@@ -2,12 +2,18 @@
 import React from 'react';
 
 interface IconProps {
-  name: 'paper-airplane' | 'paper-clip' | 'download' | 'users' | 'logout' | 'plus' | 'check' | 'x-circle' | 'wifi' | 'wifi-off' | 'trash' | 'bold' | 'italic' | 'code-bracket' | 'clock' | 'menu' | 'github' | 'heart' | 'share-nodes' | 'chat-bubble' | 'shield-check' | 'cloud-arrow-down';
+  name: 'paper-airplane' | 'paper-clip' | 'download' | 'users' | 'logout' | 'plus' | 'check' | 'x-circle' | 'wifi' | 'wifi-off' | 'trash' | 'bold' | 'italic' | 'code-bracket' | 'clock' | 'menu' | 'github' | 'heart' | 'share-nodes' | 'chat-bubble' | 'shield-check' | 'cloud-arrow-down' | 'cog';
   className?: string;
 }
 
 export const Icon: React.FC<IconProps> = ({ name, className = 'w-6 h-6' }) => {
   const icons: Record<string, React.ReactNode> = {
+    'cog': (
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-1.003 1.11-1.226.55-.223 1.159-.223 1.71 0 .55.223 1.02.684 1.11 1.226M15.001 19.06c.09.542.56 1.003 1.11 1.226.55.223 1.159.223 1.71 0 .55-.223 1.02-.684 1.11-1.226M15.001 4.94a7.5 7.5 0 011.487-1M8.999 4.94a7.5 7.5 0 00-1.487-1M15.001 19.06a7.5 7.5 0 001.487 1M8.999 19.06a7.5 7.5 0 01-1.487 1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+      </svg>
+    ),
     'menu': (
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
